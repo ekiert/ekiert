@@ -4,3 +4,8 @@ spring:
     username: sa
     password:
     driver-class-name: org.hsqldb.jdbcDriver
+server:
+  error:
+    whitelabel:
+      enabled: false
+    include-message: always
