@@ -1,0 +1,70 @@
+import groovy.sql.Sql
+
+plugins {
+	id 'org.springframework.boot' version '3.0.2'
+	id 'io.spring.dependency-management' version '1.1.0'
+	id 'java'
+}
+
+group = 'pl.empik'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '17'
+
+repositories {
+	mavenCentral()
+}
+
+configurations {
+	[testDatabaseDriver]
+}
+
+dependencies {
+	implementation (['org.springframework.boot:spring-boot-starter-web',
+					 'org.springframework.boot:spring-boot-starter-jdbc'])
+	compileOnly 'org.projectlombok:lombok:1.18.26'
+	annotationProcessor 'org.projectlombok:lombok:1.18.26'
+	runtimeOnly 'org.hsqldb:hsqldb:2.7.0'
+	testImplementation (['org.springframework.boot:spring-boot-starter-test',
+						 'org.hsqldb:hsqldb:2.7.0',])
+	testDatabaseDriver 'org.hsqldb:hsqldb:2.7.0'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+// Make Test Database Driver classes available to this script.
+configurations.testDatabaseDriver.each { File file -> GroovyObject.class.classLoader.addURL(file.toURL()) }
+
+task recreateTestDatabase(group: 'verification') {
+	doLast {
+		def dbDir = new File('test/.hsqldb')
+		def dbName = 'testdb'
+		def dbUser = 'sa'
+		def dbPassword = ''
+		def dbProps = [user: dbUser, password: dbPassword] as Properties
+		def dbUrl = "jdbc:hsqldb:file:${dbDir}/${dbName};shutdown=true"
+		def dbDriver = 'org.hsqldb.jdbcDriver'
+
+		def dbScriptsDir = file("test")
+		def dbScripts = ['sql/create_tables.sql']
+
+		// Reads all SQL Statements from the specified file, removes comments, splits them into individual statements by semi-colon, and then removes empty statements.
+		def readStatements = { String fileName ->
+			return new File(dbScriptsDir, fileName).readLines().findAll { !it.startsWith('--') }.join().split(';')
+					.collect { it.replace(":", ";").trim() }.findAll { !it.empty }
+		}
+
+		delete dbDir
+		mkdir dbDir
+
+		def sql = Sql.newInstance(dbUrl, dbProps, dbDriver)
+		try {
+			sql.execute('SET DATABASE SQL SYNTAX ORA TRUE')
+			dbScripts.each { readStatements(it).each { sql.execute(it) } }
+		} finally {
+			sql.close()
+		}
+	}
+	test.dependsOn recreateTestDatabase
+}
